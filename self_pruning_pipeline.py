@@ -1,9 +1,3 @@
-"""
-Self-Pruning Neural Network — Full Pipeline
-Trains SelfPruningNet on CIFAR-10 across multiple lambda values,
-extracts REAL gate values, and produces sparsity analysis plots.
-"""
-
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -15,9 +9,6 @@ import torchvision
 import torchvision.transforms as transforms
 
 
-# ─────────────────────────────────────────────
-# 1. ARCHITECTURE  (unchanged from prunable_layer.py)
-# ─────────────────────────────────────────────
 
 class PrunableLinear(nn.Module):
     def __init__(self, in_features, out_features):
@@ -62,9 +53,6 @@ class SelfPruningNet(nn.Module):
         return all_gates.mean()
 
 
-# ─────────────────────────────────────────────
-# 2. DATA LOADER  (unchanged)
-# ─────────────────────────────────────────────
 
 def get_cifar10_loaders(batch_size=128):
     transform = transforms.Compose([
@@ -80,21 +68,8 @@ def get_cifar10_loaders(batch_size=128):
     return train_loader, test_loader
 
 
-# ─────────────────────────────────────────────
-# 3. CORE METRIC FUNCTIONS  (unchanged from analysis_script.py)
-# ─────────────────────────────────────────────
 
 def compute_sparsity(gate_values, threshold=1e-2):
-    """
-    Compute sparsity as % of gate values below threshold.
-
-    Args:
-        gate_values: numpy array or torch tensor of sigmoid gate outputs
-        threshold:   float, default 1e-2
-
-    Returns:
-        float — sparsity percentage (0–100)
-    """
     if isinstance(gate_values, torch.Tensor):
         gate_values = gate_values.detach().cpu().numpy()
     gate_values = np.asarray(gate_values).flatten()
@@ -103,42 +78,19 @@ def compute_sparsity(gate_values, threshold=1e-2):
 
 
 def compute_metrics(gate_values, accuracy):
-    """
-    Bundle gate-level statistics alongside accuracy.
-
-    Args:
-        gate_values: numpy array or torch tensor
-        accuracy:    float (0–1), e.g. 0.923
-
-    Returns:
-        dict with accuracy, sparsity_pct, mean_gate, std_gate
-    """
     if isinstance(gate_values, torch.Tensor):
         gate_values = gate_values.detach().cpu().numpy()
     gate_values = np.asarray(gate_values).flatten()
     return {
-        "accuracy":     round(float(accuracy) * 100, 2),   # stored as %
+        "accuracy":     round(float(accuracy) * 100, 2),   
         "sparsity_pct": compute_sparsity(gate_values),
         "mean_gate":    round(float(gate_values.mean()), 4),
         "std_gate":     round(float(gate_values.std()),  4),
     }
 
 
-# ─────────────────────────────────────────────
-# 4. GATE EXTRACTION  (new — replaces generate_synthetic_gates)
-# ─────────────────────────────────────────────
 
 def extract_all_gates(model):
-    """
-    Iterate over all modules, find gate_scores, apply sigmoid,
-    flatten and concatenate into a single numpy array.
-
-    Args:
-        model: SelfPruningNet instance
-
-    Returns:
-        numpy array of shape (total_gates,) with values in [0, 1]
-    """
     gate_arrays = []
     for module in model.modules():
         if hasattr(module, 'gate_scores'):
@@ -147,12 +99,8 @@ def extract_all_gates(model):
     return np.concatenate(gate_arrays) if gate_arrays else np.array([])
 
 
-# ─────────────────────────────────────────────
-# 5. EVALUATION  (extended to return gates)
-# ─────────────────────────────────────────────
 
 def evaluate(model, loader, device):
-    """Original evaluate — returns accuracy %."""
     model.eval()
     correct, total = 0, 0
     with torch.no_grad():
@@ -166,31 +114,13 @@ def evaluate(model, loader, device):
 
 
 def evaluate_with_gates(model, loader, device):
-    """
-    Evaluate model accuracy AND extract real gate values.
-
-    Returns:
-        accuracy    — float in [0, 1]
-        gate_values — 1-D numpy array of all sigmoid gate outputs
-    """
     acc_pct     = evaluate(model, loader, device)
     gate_values = extract_all_gates(model)
     return acc_pct / 100.0, gate_values
 
 
-# ─────────────────────────────────────────────
-# 6. TRAINING  (modified to RETURN model, test_loader, device)
-# ─────────────────────────────────────────────
 
 def train(epochs=10, lambda_sparse=0.01):
-    """
-    Train SelfPruningNet with L1 gate regularisation.
-
-    Returns:
-        model       — trained SelfPruningNet
-        test_loader — DataLoader for CIFAR-10 test set
-        device      — torch.device used for training
-    """
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"  Device: {device}")
 
@@ -231,18 +161,8 @@ def train(epochs=10, lambda_sparse=0.01):
     return model, test_loader, device
 
 
-# ─────────────────────────────────────────────
-# 7. RESULTS TABLE  (replaced synthetic with real training)
-# ─────────────────────────────────────────────
 
 def build_results_table(lambda_values, epochs=10):
-    """
-    Train a model for each lambda, evaluate, collect real metrics.
-
-    Returns:
-        pd.DataFrame  — Lambda | Accuracy | Sparsity %
-        list of dicts — raw metric records (for best-model selection)
-    """
     rows    = []
     records = []
 
@@ -273,18 +193,8 @@ def build_results_table(lambda_values, epochs=10):
     return df, records
 
 
-# ─────────────────────────────────────────────
-# 8. BEST MODEL SELECTION
-# ─────────────────────────────────────────────
 
 def select_best(records):
-    """
-    Choose the run with the best accuracy-sparsity trade-off.
-    Strategy: highest accuracy; if tied within 0.5%, prefer higher sparsity.
-
-    Returns:
-        dict — the chosen record
-    """
     sorted_recs = sorted(records, key=lambda r: (-r["accuracy"], -r["sparsity"]))
     best = sorted_recs[0]
     print(f"\n── Best model: λ = {best['lambda']}  "
@@ -292,19 +202,8 @@ def select_best(records):
     return best
 
 
-# ─────────────────────────────────────────────
-# 9. PLOTS  (unchanged from analysis_script.py)
-# ─────────────────────────────────────────────
 
 def plot_gate_histogram(gate_values, lambda_val=None, save_path=None):
-    """
-    Histogram of sigmoid gate values for the best / chosen model.
-
-    Args:
-        gate_values: 1-D numpy array
-        lambda_val:  float or None — shown in title if provided
-        save_path:   str or None — saves figure if given
-    """
     gate_values = np.asarray(gate_values).flatten()
 
     fig, ax = plt.subplots(figsize=(8, 4.5))
@@ -348,10 +247,6 @@ def plot_gate_histogram(gate_values, lambda_val=None, save_path=None):
 
 
 def plot_lambda_comparison(records, save_path=None):
-    """
-    Side-by-side bar charts: Accuracy vs Sparsity across lambda values.
-    Uses REAL metrics from records (no synthetic data).
-    """
     lambda_values = [r["lambda"]   for r in records]
     accuracies    = [r["accuracy"] for r in records]
     sparsities    = [r["sparsity"] for r in records]
@@ -362,7 +257,6 @@ def plot_lambda_comparison(records, save_path=None):
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4.5))
 
-    # Accuracy
     bars1 = ax1.bar(x, accuracies, width=width, color="#3B8BD4",
                     edgecolor="white", linewidth=0.5)
     ax1.set_title("Test Accuracy vs Lambda", fontsize=12, fontweight="medium")
@@ -372,7 +266,6 @@ def plot_lambda_comparison(records, save_path=None):
     ax1.bar_label(bars1, fmt="%.1f%%", padding=3, fontsize=9)
     ax1.spines["top"].set_visible(False); ax1.spines["right"].set_visible(False)
 
-    # Sparsity
     bars2 = ax2.bar(x, sparsities, width=width, color="#E8593C",
                     edgecolor="white", linewidth=0.5)
     ax2.set_title("Sparsity % vs Lambda", fontsize=12, fontweight="medium")
@@ -392,28 +285,21 @@ def plot_lambda_comparison(records, save_path=None):
     return fig
 
 
-# ─────────────────────────────────────────────
-# 10. MAIN — end-to-end pipeline
-# ─────────────────────────────────────────────
 
 if __name__ == "__main__":
     LAMBDA_VALUES = [0.0001, 0.001, 0.01]
-    EPOCHS        = 10          # reduce to 3–5 for a quick smoke-test
+    EPOCHS        = 10          
 
-    # Train across all lambdas and collect real metrics
     df, records = build_results_table(LAMBDA_VALUES, epochs=EPOCHS)
 
-    # Select the best model
     best = select_best(records)
 
-    # Histogram of real gate values from the best model
     plot_gate_histogram(
         best["gate_values"],
         lambda_val=best["lambda"],
         save_path="gate_histogram.png",
     )
 
-    # Accuracy vs Sparsity comparison across lambdas
     plot_lambda_comparison(records, save_path="lambda_comparison.png")
 
     print("\nDone.")

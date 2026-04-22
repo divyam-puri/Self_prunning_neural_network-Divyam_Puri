@@ -5,7 +5,6 @@ import torchvision
 import torchvision.transforms as transforms
 
 
-# ─── Layer ───────────────────────────────────────────────
 class PrunableLinear(nn.Module):
     def __init__(self, in_features, out_features):
         super().__init__()
@@ -19,7 +18,6 @@ class PrunableLinear(nn.Module):
         return F.linear(x, gated_weight, self.bias)
 
 
-# ─── Model ───────────────────────────────────────────────
 class SelfPruningNet(nn.Module):
     def __init__(self):
         super().__init__()
@@ -50,11 +48,10 @@ class SelfPruningNet(nn.Module):
         return all_gates.mean()
 
 
-# ─── Data ────────────────────────────────────────────────
 def get_cifar10_loaders(batch_size=128):
     transform = transforms.Compose([
         transforms.ToTensor(),
-        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))  # normalize to [-1, 1]
+        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
     ])
 
     train_set = torchvision.datasets.CIFAR10(root='./data', train=True,
@@ -68,7 +65,6 @@ def get_cifar10_loaders(batch_size=128):
     return train_loader, test_loader
 
 
-# ─── Evaluation ──────────────────────────────────────────
 def evaluate(model, loader, device):
     model.eval()
     correct, total = 0, 0
@@ -82,7 +78,6 @@ def evaluate(model, loader, device):
     return 100.0 * correct / total
 
 
-# ─── Training ────────────────────────────────────────────
 def train(epochs=10, lambda_sparse=0.01):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}\n")
@@ -104,9 +99,9 @@ def train(epochs=10, lambda_sparse=0.01):
 
             outputs = model(images)
 
-            cls_loss  = criterion(outputs, labels)         # classification loss
-            spar_loss = model.sparsity_loss()              # sparsity penalty
-            loss      = cls_loss + lambda_sparse * spar_loss  # combined
+            cls_loss  = criterion(outputs, labels)        
+            spar_loss = model.sparsity_loss()              
+            loss      = cls_loss + lambda_sparse * spar_loss  
 
             loss.backward()
             optimizer.step()
@@ -116,7 +111,6 @@ def train(epochs=10, lambda_sparse=0.01):
         avg_loss = total_loss / len(train_loader)
         acc      = evaluate(model, test_loader, device)
 
-        # Gate stats after each epoch
         gates = model.get_gates()
         mean_gates = {k: v.mean().item() for k, v in gates.items()}
 
